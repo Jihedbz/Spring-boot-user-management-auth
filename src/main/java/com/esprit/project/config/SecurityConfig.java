@@ -1,23 +1,17 @@
 package com.esprit.project.config;
 
 import com.esprit.project.security.JwtAuthenticationFilter;
-import lombok.RequiredArgsConstructor;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-
-
-
-import java.util.List;
 
 @Configuration
 public class SecurityConfig implements WebMvcConfigurer {
@@ -31,15 +25,17 @@ public class SecurityConfig implements WebMvcConfigurer {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()  // Allow register and login
+                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()  // Public endpoints
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")  // Admin-only endpoints
+                        .requestMatchers("/api/user/**").hasAnyRole("USER", "ADMIN")  // User and Admin access
                         .anyRequest().authenticated()  // Secure other endpoints
                 )
+                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))  // Stateless authentication
                 .logout(logout -> logout
                         .logoutUrl("/api/auth/logout")  // Define the logout URL
-                        .logoutSuccessUrl("/login")  // Redirect after logout
-                        .permitAll()  // Allow everyone to access the logout endpoint
+                        .logoutSuccessHandler((request, response, authentication) -> response.setStatus(HttpServletResponse.SC_NO_CONTENT)) // No Content Response
+                        .permitAll()
                 )
-                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))  // Stateless session
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);  // Add JWT filter
 
         return http.build();
@@ -55,7 +51,7 @@ public class SecurityConfig implements WebMvcConfigurer {
         // Apply CORS to your API paths
         registry.addMapping("/api/**")  // Allow requests to API endpoints
                 .allowedOrigins("http://localhost:4200")  // Angular's frontend URL
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedMethods("*")
                 .allowedHeaders("*")
                 .allowCredentials(true);  // If you need cookies or credentials
     }

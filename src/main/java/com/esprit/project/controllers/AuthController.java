@@ -7,8 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,7 +18,6 @@ public class AuthController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
-    private final UserDetailsService userDetailsService;
 
     // ✅ Register a new user
     @PostMapping("/register")
@@ -35,7 +34,12 @@ public class AuthController {
         );
 
         UserDetails userDetails = userService.loadUserByUsername(user.getUsername());
-        String token = jwtUtil.generateToken(userDetails.getUsername());
+        String role = userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority) // Extract role as a string
+                .findFirst()
+                .orElse("USER"); // Default role if no role is assigned
+
+        String token = jwtUtil.generateToken(userDetails.getUsername(), role);
 
         return ResponseEntity.ok(token);
     }

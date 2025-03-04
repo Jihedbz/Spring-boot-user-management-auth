@@ -1,6 +1,5 @@
 package com.esprit.project.security;
 
-import com.esprit.project.services.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -32,55 +32,46 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
-        // Extract the Authorization header
-        String authHeader = request.getHeader("Authorization");
-
-        // Check if the header is valid
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        // Extract the token from the header
-        String token = authHeader.substring(7);
-
         try {
-            // Extract the username from the token
+            String authHeader = request.getHeader("Authorization");
+
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            // Extract JWT token
+            String token = authHeader.substring(7);
             String username = jwtUtil.extractUsername(token);
 
-            // If the username is valid and there's no existing authentication in the context
+            // Avoid re-authenticating if user is already authenticated
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                // Load the user details from the database
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                // Validate the token
-                if (jwtUtil.validateToken(token, userDetails.getUsername())) {
-                    // Create an authentication object
+                // Validate the token and ensure it belongs to the same user
+                if (jwtUtil.validateToken(token, userDetails.getUsername(),
+                        userDetails.getAuthorities().stream()
+                                .map(GrantedAuthority::getAuthority) // Convert roles to string
+                                .findFirst() // Assuming a single role
+                                .orElse("") // Default empty if no roles exist
+                )) {
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(
-                                    userDetails,
-                                    null, // Credentials are not needed for JWT
-                                    userDetails.getAuthorities()
+                                    userDetails, null, userDetails.getAuthorities()
                             );
 
-                    // Set additional details (e.g., IP address, session ID)
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                    // Set the authentication in the SecurityContext
                     SecurityContextHolder.getContext().setAuthentication(authentication);
-
-                    logger.info("Authenticated user: {}", username);
+                    logger.info("User {} authenticated successfully", username);
+                } else {
+                    logger.warn("Invalid JWT token for user: {}", username);
                 }
             }
         } catch (Exception e) {
-            // Log the error and clear the SecurityContext
-            logger.error("Failed to authenticate user: {}", e.getMessage());
-            SecurityContextHolder.clearContext();
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
-            return;
+            logger.error("JWT authentication error: {}", e.getMessage());
         }
 
-        // Continue the filter chain
+        // Continue the request
         filterChain.doFilter(request, response);
     }
 }

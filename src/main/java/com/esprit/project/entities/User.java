@@ -28,6 +28,8 @@ public class User implements UserDetails { // Implements Spring Security UserDet
     @Column(nullable = false)
     String password;
 
+    @Getter
+    @Setter
     @Enumerated(EnumType.STRING) // Store role as string in DB
     Role role;
 
@@ -55,4 +57,5 @@ public class User implements UserDetails { // Implements Spring Security UserDet
     public boolean isEnabled() {
         return true;
     }
+
 }
